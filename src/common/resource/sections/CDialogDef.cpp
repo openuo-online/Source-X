@@ -361,7 +361,14 @@ bool CDialogDef::r_Verb( CScript & s, CTextConsole * pSrc )	// some command on t
             GET_ABSOLUTE( charLimit );
             _SkipAll( ptcArgs );
 
-            const uint uiText = GumpAddText( *ptcArgs ? ptcArgs : "" );
+            // Convert UTF-8 text to UTF-16 for Windows compatibility
+            std::vector<tchar> convertedText;
+            if (*ptcArgs) {
+                UTF8MBSTR utf8Str(ptcArgs);
+                UTF8MBSTR::ConvertUTF8ToString(utf8Str, &convertedText);
+            }
+            
+            const uint uiText = GumpAddText( convertedText.empty() ? "" : convertedText.data() );
             m_sControls.emplace_back(false).Format( "textentrylimited %d %d %d %d %d %d %u %d", x, y, w, h, hue, id, uiText, charLimit );
             return true;
         }
