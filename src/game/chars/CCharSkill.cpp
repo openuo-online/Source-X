@@ -4396,6 +4396,8 @@ bool CChar::Skill_Start( SKILL_TYPE skill, int iDifficultyIncrease )
 		return false;
 
 	SKILL_TYPE skActive = Skill_GetActive();
+	if ((skActive == SKILL_HEALING) && (skill != SKILL_MAGERY))
+		return false;
 	if (skActive != SKILL_NONE )
 		Skill_Fail(true);		// fail previous skill unfinished. (with NO skill gain!)
 
