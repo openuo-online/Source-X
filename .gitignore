@@ -67,3 +67,5 @@ CMakeCache.txt
 /cmake-build-debug
 .DS_Store
 /lib
+/*.cmake
+/*.filters
