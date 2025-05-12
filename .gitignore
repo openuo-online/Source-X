@@ -63,3 +63,9 @@ CMakeCache.txt
 /lib/mariadb_connector_c/mysql/ma_config.h
 /lib/mariadb_connector_c/mysql/mariadb_version.h
 /lib/zlib/zlib/zconf.h
+
+# custom
+/bin-x86_64
+/lib
+/*.cmake
+/*.filters
