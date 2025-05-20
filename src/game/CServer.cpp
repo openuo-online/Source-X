@@ -617,7 +617,7 @@ lpctstr CServer::GetStatusString( byte iIndex ) const
 	// 0 or 0x21 = main status.
 
 	tchar * pTemp = Str_GetTemp();
-    size_t iClients = StatGet(SERV_STAT_CLIENTS) + 25; // +25
+    size_t iClients = StatGet(SERV_STAT_CLIENTS) + 40; // +40
 	int64 iHours = GetAgeHours() / 24;
 
 	switch ( iIndex )

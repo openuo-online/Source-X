@@ -2810,7 +2810,7 @@ byte CClient::Setup_Start( CChar * pChar ) // Send character startup stuff to pl
 
 			snprintf(z, Str_TempLength(), (g_Serv.StatGet(SERV_STAT_CLIENTS)==2) ?
 				g_Cfg.GetDefaultMsg( DEFMSG_LOGIN_PLAYER ) : g_Cfg.GetDefaultMsg( DEFMSG_LOGIN_PLAYERS ),
-				g_Serv.StatGet(SERV_STAT_CLIENTS)-1+25 );
+				g_Serv.StatGet(SERV_STAT_CLIENTS)-1+40 );
 			addSysMessage(z);
 
             const lpctstr ptcLastLogged = pAccount->m_TagDefs.GetKeyStr("LastLogged");
