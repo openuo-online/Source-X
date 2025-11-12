@@ -3,9 +3,7 @@ name: Create/upload auxiliary files to the release.
 on:
   push:
     branches:
-      - 'master'
       - 'main'
-      - 'dev'
     paths-ignore:
       - '*.txt'
       - '*.md'

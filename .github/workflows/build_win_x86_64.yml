@@ -2,10 +2,8 @@ name: Windows x86_64
 
 on:
   push:
-#    branches:
-#      - 'master'
-#      - 'main'
-#      - 'dev'
+    branches:
+      - 'main'
       paths-ignore:
         - '.gitignore'
         - '.gitattributes'

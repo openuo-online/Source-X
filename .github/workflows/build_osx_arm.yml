@@ -2,10 +2,8 @@ name: MacOS ARM
 
 on:
   push:
-#    branches:
-#      - 'master'
-#      - 'main'
-#      - 'dev'
+    branches:
+      - 'main'
       paths-ignore:
         - '.gitignore'
         - '.gitattributes'
