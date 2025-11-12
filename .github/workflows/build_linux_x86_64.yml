@@ -103,18 +103,18 @@ jobs:
           prerelease: true
           files: SphereSvrX-linux-x86_64-nightly.tar.gz
 
-  upload_selfhost_release:
-    needs: linux-x86_64
-    if: contains(fromJson('["master", "main"]'), github.ref_name) && (github.repository == 'SphereServer/Source-X')
+  # upload_selfhost_release:
+  #   needs: linux-x86_64
+  #   if: contains(fromJson('["master", "main"]'), github.ref_name) && (github.repository == 'SphereServer/Source-X')
 
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download builds
-        uses: actions/download-artifact@v4
-        with:
-          name: Build-linux-x86_64
-          merge-multiple: true
-          run-id: ${{ github.run_id }}
-      - name: Push release
-        run: |
-          curl -sST "{SphereSvrX-linux-x86_64-nightly.tar.gz}" -u ${{secrets.UP_USER}}:${{secrets.UP_PASS}} ${{secrets.UP_WHERE}}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Download builds
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: Build-linux-x86_64
+  #         merge-multiple: true
+  #         run-id: ${{ github.run_id }}
+  #     - name: Push release
+  #       run: |
+  #         curl -sST "{SphereSvrX-linux-x86_64-nightly.tar.gz}" -u ${{secrets.UP_USER}}:${{secrets.UP_PASS}} ${{secrets.UP_WHERE}}
