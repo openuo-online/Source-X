@@ -2,8 +2,8 @@ name: Linux x86_64
 
 on:
   push:
-#    branches:
-#      - 'master'
+      branches:
+       - 'master'
 #      - 'main'
 #      - 'dev'
       paths-ignore:
@@ -79,7 +79,6 @@ jobs:
         name: Build-linux-x86_64
         path: SphereSvrX-linux-x86_64-nightly.tar.gz
         overwrite: true
-
 
   upload_github_release:
     needs: linux-x86_64
