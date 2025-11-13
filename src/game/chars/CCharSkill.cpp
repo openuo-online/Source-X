@@ -490,12 +490,10 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 						const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
 						
 						// Auto-activate new day's bonus if day changed
-						bool bNewDayActivated = false;
 						if ( iCurrentDay != iLastBonusDay )
 						{
 							SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
 							SetKeyNum("SKILLGAIN_BONUS_STARTTIME", iCurrentTime);
-							bNewDayActivated = true;
 							
 							// Notify player about new day's bonus activation
 							int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
