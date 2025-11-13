@@ -364,13 +364,15 @@ lpctstr CChar::Noto_GetTitle() const
 		pFameTitle = Noto_GetFameTitle();
 
 	tchar * pTemp = Str_GetTemp();
-	snprintf( pTemp, Str_TempLength(), "%s%s%s%s%s%s",
-		(pTitle[0]) ? ( Char_GetDef()->IsFemale() ? g_Cfg.GetDefaultMsg( DEFMSG_TITLE_ARTICLE_FEMALE ) : g_Cfg.GetDefaultMsg( DEFMSG_TITLE_ARTICLE_MALE ) )  : "",
-		pTitle,
-		(pTitle[0]) ? " " : "",
+	snprintf( pTemp, Str_TempLength(), "%s%s%s%s%s",
 		pFameTitle,
 		GetName(),
-		GetKeyStr("NAME.SUFFIX"));
+		GetKeyStr("NAME.SUFFIX"),
+		(pTitle[0]) ? " (" : "",
+		pTitle);
+	
+	if (pTitle[0])
+		snprintf( pTemp + strlen(pTemp), Str_TempLength() - strlen(pTemp), ")" );
 
 	return pTemp;
 }

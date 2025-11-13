@@ -962,8 +962,7 @@ lpctstr CChar::GetTradeTitle() const // Paperdoll title for character p (2)
 	{
 		if ( !IsIndividualName() )
 			return "";	// same as type anyhow.
-		lpctstr ptcArticle = pCharDef->IsFemale() ? g_Cfg.GetDefaultMsg(DEFMSG_TRADETITLE_ARTICLE_FEMALE) : g_Cfg.GetDefaultMsg(DEFMSG_TRADETITLE_ARTICLE_MALE);
-		snprintf(pTemp, Str_TempLength(), "%s %s", ptcArticle, pCharDef->GetTradeName());
+		snprintf(pTemp, Str_TempLength(), "(%s)", pCharDef->GetTradeName());
 		return pTemp;
 	}
 
