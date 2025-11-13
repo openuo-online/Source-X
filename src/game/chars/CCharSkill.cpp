@@ -426,7 +426,6 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 			iBonusHoursMax = 2; // Default 2 hours per day
 		if ( iBonusHoursMax > 0 )
 		{
-			const int64 iCurrentTime = CWorldGameTime::GetCurrentTime().GetTimeRaw();
 			const CSTime currentDate = CSTime::GetCurrentTime();
 			const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
 			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
