@@ -16,6 +16,9 @@ on:
       - 'main'
       - 'dev'
 
+permissions:
+  contents: write
+
 jobs:
   windows-x86_64:
     runs-on: windows-latest
