@@ -2819,6 +2819,48 @@ byte CClient::Setup_Start( CChar * pChar ) // Send character startup stuff to pl
                 snprintf(z, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_LOGIN_LASTLOGGED ), ptcLastLogged);
                 addSysMessage(z);
             }
+
+			// Show daily skill gain bonus message if enabled
+			const int64 iBonusHoursMax = pChar->GetKeyNum("SKILLGAIN_BONUS_HOURS", 2);
+			if ( iBonusHoursMax > 0 )
+			{
+				const int64 iCurrentTime = CWorldGameTime::GetCurrentTime().GetTimeRaw();
+				const CSTime currentDate = CSTime::GetCurrentTime();
+				const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
+				const int iLastBonusDay = (int)pChar->GetKeyNum("SKILLGAIN_BONUS_DAY", 0);
+				
+				// Initialize or reset daily bonus tracking (at midnight)
+				if ( iCurrentDay != iLastBonusDay )
+				{
+					pChar->SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
+					pChar->SetKeyNum("SKILLGAIN_BONUS_USED", 0);
+					pChar->SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
+				}
+				
+				// Calculate remaining bonus time
+				const int64 iBonusUsedMs = pChar->GetKeyNum("SKILLGAIN_BONUS_USED", 0);
+				const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+				const int64 iBonusRemainingMs = iBonusMaxMs - iBonusUsedMs;
+				
+				if ( iBonusRemainingMs > 0 )
+				{
+					const int64 iMultiplier = pChar->GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER", 2);
+					const int64 iRemainingMinutes = iBonusRemainingMs / (60 * MSECS_PER_SEC);
+					const int64 iRemainingHours = iRemainingMinutes / 60;
+					const int64 iRemainingMins = iRemainingMinutes % 60;
+					
+					if ( iRemainingHours > 0 )
+						snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 "h %" PRId64 "m remaining today!", iMultiplier, iRemainingHours, iRemainingMins);
+					else
+						snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 " minutes remaining today!", iMultiplier, iRemainingMins);
+					addSysMessage(z);
+				}
+				else
+				{
+					snprintf(z, Str_TempLength(), "Daily skill gain bonus has been used up. It will reset at midnight.");
+					addSysMessage(z);
+				}
+			}
 		}
 		if ( m_pChar->m_pArea && m_pChar->m_pArea->IsGuarded() && !m_pChar->m_pArea->IsFlag(REGION_FLAG_ANNOUNCE) )
 		{

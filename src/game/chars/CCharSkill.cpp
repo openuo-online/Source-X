@@ -412,6 +412,50 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 	int64 iChance = pSkillDef->m_AdvRate.GetChancePercent(uiSkillLevel);
 	int64 iSkillMax = Skill_GetMax(skill);	// max advance for this skill.
 
+	// Daily skill gain bonus system
+	// Tracks cumulative bonus time used per day (resets at midnight)
+	// Can be controlled via TAG.SKILLGAIN_BONUS_HOURS (default: 2 hours per day)
+	// Can be controlled via TAG.SKILLGAIN_BONUS_MULTIPLIER (default: 2x)
+	if ( IsPlayer() && m_pClient )
+	{
+		const int64 iBonusHoursMax = GetKeyNum("SKILLGAIN_BONUS_HOURS", 2); // Default 2 hours per day
+		if ( iBonusHoursMax > 0 )
+		{
+			const int64 iCurrentTime = CWorldGameTime::GetCurrentTime().GetTimeRaw();
+			const CSTime currentDate = CSTime::GetCurrentTime();
+			const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
+			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY", 0);
+			
+			// Check if it's a new day (past midnight), reset bonus time
+			if ( iCurrentDay != iLastBonusDay )
+			{
+				SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
+				SetKeyNum("SKILLGAIN_BONUS_USED", 0);
+				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
+			}
+			
+			// Check remaining bonus time
+			const int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED", 0);
+			const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+			
+			if ( iBonusUsedMs < iBonusMaxMs )
+			{
+				// Apply bonus multiplier
+				const int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER", 2); // Default 2x
+				iChance *= iMultiplier;
+				
+				// Track bonus time usage (update every ~1 second to avoid excessive writes)
+				const int64 iLastBonusUpdate = GetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", 0);
+				if ( (iCurrentTime - iLastBonusUpdate) >= MSECS_PER_SEC )
+				{
+					const int64 iTimeElapsed = iCurrentTime - iLastBonusUpdate;
+					SetKeyNum("SKILLGAIN_BONUS_USED", iBonusUsedMs + iTimeElapsed);
+					SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
+				}
+			}
+		}
+	}
+
 	CScriptTriggerArgs pArgs(0, iChance, iSkillMax);
 	if ( IsTrigUsed(TRIGGER_SKILLGAIN) )
 	{
@@ -448,6 +492,9 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 			if ( iRoll <= iChance )
 			{
 				++uiSkillLevel;
+				// Ensure we don't exceed the skill maximum
+				if ( uiSkillLevel > (ushort)iSkillMax )
+					uiSkillLevel = (ushort)iSkillMax;
 				Skill_SetBase( skill, uiSkillLevel );
 			}
 		}
