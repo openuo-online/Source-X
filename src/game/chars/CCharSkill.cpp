@@ -526,7 +526,7 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 					}
 				}
 				
-				uiSkillLevel += iGainAmount;
+				uiSkillLevel = (ushort)(uiSkillLevel + iGainAmount);
 				// Ensure we don't exceed the skill maximum
 				if ( uiSkillLevel > (ushort)iSkillMax )
 					uiSkillLevel = (ushort)iSkillMax;
