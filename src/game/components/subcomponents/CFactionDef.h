@@ -17,11 +17,11 @@ class CItemBase;
     The Original Slayers fall into 6 groups. Abyss, Arachnid, Elemental, Humanoid, Reptilian and Undead.
     Each group has a Super Slayer that will increase damage/success on all monsters within that group.
     Each of those groups have an opposing group. (i.e. Humanoid vs. Undead)
-    – The opposing group will do double damage to anyone wielding the Slayer.
-    – Mondain’s Legacy Slayers, usually found on Talismans, do not have an opposing group.
+    - The opposing group will do double damage to anyone wielding the Slayer.
+    - Mondain's Legacy Slayers, usually found on Talismans, do not have an opposing group.
     A successful use of a Slayer Weapon, Spellbook or Instrument will yield a little white flash on the monster.
     Super Slayer Weapons will do double damage to the monsters they are meant for.
-    “Single Slayers” or Slayers that fall into a Super Slayer subcategory will do triple damage.
+    "Single Slayers" or Slayers that fall into a Super Slayer subcategory will do triple damage.
 
     The following Super Slayers primarily are found on Talisman: Bat, Bear, Beetle, Bird, Bovine, Flame, Ice, Mage, Vermin, & Wolf.
     The following Super Slayers primarily are found on musical instruments, weapons, and spellbooks:
@@ -33,7 +33,7 @@ class CItemBase;
     Slayer Instruments will increase your success chance by 20% when used on the creatures it is meant for.
     Slayer Instruments will decrease your success chance by 20% when used on the creatures from its opposing group.
     Slayer Instruments can only be found as monster loot.
-    Slayer Talismans are found on Mondain’s Legacy monsters or as Quest Rewards.
+    Slayer Talismans are found on Mondain's Legacy monsters or as Quest Rewards.
 */
 
 
@@ -123,7 +123,7 @@ public:
         LIZARDMAN,
         REPTILIAN_QTY,
 
-        // Old Mondain’s Legacy Slayers
+        // Old Mondain's Legacy Slayers
         BAT_SSLAYER          = _kuiSuperSlayerSpeciesIndex,
         BEAR,
         BEETLE,

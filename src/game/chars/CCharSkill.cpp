@@ -4,6 +4,7 @@
 #include "../../common/resource/sections/CRegionResourceDef.h"
 #include "../../common/resource/CResourceLock.h"
 #include "../../common/sphere_library/CSRand.h"
+#include "../../common/sphere_library/CSTime.h"
 #include "../../common/CExpression.h"
 #include "../../common/CLog.h"
 #include "../clients/CClient.h"
@@ -12,6 +13,7 @@
 #include "../items/CItemVendable.h"
 #include "../triggers.h"
 #include "../CServer.h"
+#include "../CWorldGameTime.h"
 #include "../CWorldMap.h"
 #include "../CWorldSearch.h"
 #include "CChar.h"
@@ -418,13 +420,15 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 	// Can be controlled via TAG.SKILLGAIN_BONUS_MULTIPLIER (default: 2x)
 	if ( IsPlayer() && m_pClient )
 	{
-		const int64 iBonusHoursMax = GetKeyNum("SKILLGAIN_BONUS_HOURS", 2); // Default 2 hours per day
+		int64 iBonusHoursMax = GetKeyNum("SKILLGAIN_BONUS_HOURS");
+		if ( iBonusHoursMax == 0 )
+			iBonusHoursMax = 2; // Default 2 hours per day
 		if ( iBonusHoursMax > 0 )
 		{
 			const int64 iCurrentTime = CWorldGameTime::GetCurrentTime().GetTimeRaw();
 			const CSTime currentDate = CSTime::GetCurrentTime();
 			const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
-			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY", 0);
+			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
 			
 			// Check if it's a new day (past midnight), reset bonus time
 			if ( iCurrentDay != iLastBonusDay )
@@ -434,24 +438,22 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
 			}
 			
-			// Check remaining bonus time
-			const int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED", 0);
-			const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+			// Update time tracking
+			int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED");
+			const int64 iLastBonusUpdate = GetKeyNum("SKILLGAIN_BONUS_LASTUPDATE");
 			
-			if ( iBonusUsedMs < iBonusMaxMs )
+			// If LASTUPDATE is not set, initialize it now
+			if ( iLastBonusUpdate == 0 )
 			{
-				// Apply bonus multiplier
-				const int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER", 2); // Default 2x
-				iChance *= iMultiplier;
-				
-				// Track bonus time usage (update every ~1 second to avoid excessive writes)
-				const int64 iLastBonusUpdate = GetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", 0);
-				if ( (iCurrentTime - iLastBonusUpdate) >= MSECS_PER_SEC )
-				{
-					const int64 iTimeElapsed = iCurrentTime - iLastBonusUpdate;
-					SetKeyNum("SKILLGAIN_BONUS_USED", iBonusUsedMs + iTimeElapsed);
-					SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
-				}
+				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
+			}
+			else if ( (iCurrentTime - iLastBonusUpdate) >= MSECS_PER_SEC )
+			{
+				// Update time usage
+				const int64 iTimeElapsed = iCurrentTime - iLastBonusUpdate;
+				iBonusUsedMs += iTimeElapsed;
+				SetKeyNum("SKILLGAIN_BONUS_USED", iBonusUsedMs);
+				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
 			}
 		}
 	}
@@ -491,7 +493,28 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 
 			if ( iRoll <= iChance )
 			{
-				++uiSkillLevel;
+				// Check for daily skill gain bonus
+				int iGainAmount = 1;
+				if ( IsPlayer() && m_pClient )
+				{
+					int64 iBonusHoursMax = GetKeyNum("SKILLGAIN_BONUS_HOURS");
+					if ( iBonusHoursMax == 0 )
+						iBonusHoursMax = 2;
+					if ( iBonusHoursMax > 0 )
+					{
+						const int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED");
+						const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+						if ( iBonusUsedMs < iBonusMaxMs )
+						{
+							int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
+							if ( iMultiplier == 0 )
+								iMultiplier = 2;
+							iGainAmount = (int)iMultiplier;
+						}
+					}
+				}
+				
+				uiSkillLevel += iGainAmount;
 				// Ensure we don't exceed the skill maximum
 				if ( uiSkillLevel > (ushort)iSkillMax )
 					uiSkillLevel = (ushort)iSkillMax;
