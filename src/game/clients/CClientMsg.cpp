@@ -2831,38 +2831,52 @@ byte CClient::Setup_Start( CChar * pChar ) // Send character startup stuff to pl
 				const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
 				const int iLastBonusDay = (int)pChar->GetKeyNum("SKILLGAIN_BONUS_DAY");
 				
-				// Initialize or reset daily bonus tracking (at midnight)
+				// Auto-activate bonus for new day
 				if ( iCurrentDay != iLastBonusDay )
 				{
+					// New day - automatically start new bonus timer
 					pChar->SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
-					pChar->SetKeyNum("SKILLGAIN_BONUS_USED", 0);
-					pChar->SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
-				}
-				
-				// Calculate remaining bonus time
-				const int64 iBonusUsedMs = pChar->GetKeyNum("SKILLGAIN_BONUS_USED");
-				const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
-				const int64 iBonusRemainingMs = iBonusMaxMs - iBonusUsedMs;
-				
-				if ( iBonusRemainingMs > 0 )
-				{
-					int64 iMultiplier = pChar->GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
-					if ( iMultiplier == 0 )
-						iMultiplier = 2; // Default 2x
-					const int64 iRemainingMinutes = iBonusRemainingMs / (60 * MSECS_PER_SEC);
-					const int64 iRemainingHours = iRemainingMinutes / 60;
-					const int64 iRemainingMins = iRemainingMinutes % 60;
-					
-					if ( iRemainingHours > 0 )
-						snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 "h %" PRId64 "m remaining today!", iMultiplier, iRemainingHours, iRemainingMins);
-					else
-						snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 " minutes remaining today!", iMultiplier, iRemainingMins);
-					addBarkParse(z, pChar, 0x3F, TALKMODE_SYSTEM, FONT_NORMAL, true);  // Green color, Unicode
+					pChar->SetKeyNum("SKILLGAIN_BONUS_STARTTIME", iCurrentTime);
 				}
 				else
 				{
-					snprintf(z, Str_TempLength(), "Daily skill gain bonus has been used up. It will reset at midnight.");
-					addBarkParse(z, pChar, 0x35, TALKMODE_SYSTEM, FONT_NORMAL, true);  // Yellow color, Unicode
+					// Same day - check if this is first login today
+					int64 iBonusStartTime = pChar->GetKeyNum("SKILLGAIN_BONUS_STARTTIME");
+					if ( iBonusStartTime == 0 )
+					{
+						// First login today - start the timer
+						pChar->SetKeyNum("SKILLGAIN_BONUS_STARTTIME", iCurrentTime);
+					}
+				}
+				
+				// Calculate remaining bonus time
+				int64 iBonusStartTime = pChar->GetKeyNum("SKILLGAIN_BONUS_STARTTIME");
+				if ( iBonusStartTime > 0 )
+				{
+					const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+					const int64 iElapsedMs = iCurrentTime - iBonusStartTime;
+					const int64 iBonusRemainingMs = iBonusMaxMs - iElapsedMs;
+					
+					if ( iBonusRemainingMs > 0 )
+					{
+						int64 iMultiplier = pChar->GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
+						if ( iMultiplier == 0 )
+							iMultiplier = 2; // Default 2x
+						const int64 iRemainingMinutes = iBonusRemainingMs / (60 * MSECS_PER_SEC);
+						const int64 iRemainingHours = iRemainingMinutes / 60;
+						const int64 iRemainingMins = iRemainingMinutes % 60;
+						
+						if ( iRemainingHours > 0 )
+							snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 "h %" PRId64 "m remaining!", iMultiplier, iRemainingHours, iRemainingMins);
+						else
+							snprintf(z, Str_TempLength(), "Daily Bonus: %" PRId64 "x skill gain for %" PRId64 " minutes remaining!", iMultiplier, iRemainingMins);
+						addBarkParse(z, pChar, 0x3F, TALKMODE_SYSTEM, FONT_NORMAL, true);  // Green color, Unicode
+					}
+					else
+					{
+						snprintf(z, Str_TempLength(), "Daily skill gain bonus has expired. It will reset at midnight.");
+						addBarkParse(z, pChar, 0x35, TALKMODE_SYSTEM, FONT_NORMAL, true);  // Yellow color, Unicode
+					}
 				}
 			}
 		}

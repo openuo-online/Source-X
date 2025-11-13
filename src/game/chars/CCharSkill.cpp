@@ -415,7 +415,8 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 	int64 iSkillMax = Skill_GetMax(skill);	// max advance for this skill.
 
 	// Daily skill gain bonus system
-	// Tracks cumulative bonus time used per day (resets at midnight)
+	// Bonus starts from first login of the day and lasts for configured hours
+	// Automatically expires at midnight or after the time limit
 	// Can be controlled via TAG.SKILLGAIN_BONUS_HOURS (default: 2 hours per day)
 	// Can be controlled via TAG.SKILLGAIN_BONUS_MULTIPLIER (default: 2x)
 	if ( IsPlayer() && m_pClient )
@@ -430,30 +431,11 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 			const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
 			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
 			
-			// Check if it's a new day (past midnight), reset bonus time
+			// Check if it's a new day (past midnight), reset bonus
 			if ( iCurrentDay != iLastBonusDay )
 			{
 				SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
-				SetKeyNum("SKILLGAIN_BONUS_USED", 0);
-				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
-			}
-			
-			// Update time tracking
-			int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED");
-			const int64 iLastBonusUpdate = GetKeyNum("SKILLGAIN_BONUS_LASTUPDATE");
-			
-			// If LASTUPDATE is not set, initialize it now
-			if ( iLastBonusUpdate == 0 )
-			{
-				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
-			}
-			else if ( (iCurrentTime - iLastBonusUpdate) >= MSECS_PER_SEC )
-			{
-				// Update time usage
-				const int64 iTimeElapsed = iCurrentTime - iLastBonusUpdate;
-				iBonusUsedMs += iTimeElapsed;
-				SetKeyNum("SKILLGAIN_BONUS_USED", iBonusUsedMs);
-				SetKeyNum("SKILLGAIN_BONUS_LASTUPDATE", iCurrentTime);
+				SetKeyNum("SKILLGAIN_BONUS_STARTTIME", 0);  // Clear start time for new day
 			}
 		}
 	}
@@ -502,9 +484,42 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 						iBonusHoursMax = 2;
 					if ( iBonusHoursMax > 0 )
 					{
-						const int64 iBonusUsedMs = GetKeyNum("SKILLGAIN_BONUS_USED");
-						const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
-						if ( iBonusUsedMs < iBonusMaxMs )
+						const int64 iCurrentTime = CWorldGameTime::GetCurrentTime().GetTimeRaw();
+						const CSTime currentDate = CSTime::GetCurrentTime();
+						const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
+						const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
+						
+						// Auto-activate new day's bonus if day changed
+						bool bNewDayActivated = false;
+						if ( iCurrentDay != iLastBonusDay )
+						{
+							SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
+							SetKeyNum("SKILLGAIN_BONUS_STARTTIME", iCurrentTime);
+							bNewDayActivated = true;
+							
+							// Notify player about new day's bonus activation
+							int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
+							if ( iMultiplier == 0 )
+								iMultiplier = 2;
+							tchar *pszMsg = Str_GetTemp();
+							snprintf(pszMsg, Str_TempLength(), "New day! Daily Bonus activated: %" PRId64 "x skill gain for %" PRId64 " hours!", iMultiplier, iBonusHoursMax);
+							if ( m_pClient )
+								m_pClient->addBarkParse(pszMsg, this, 0x3F, TALKMODE_SYSTEM, FONT_NORMAL, true);
+						}
+						
+						// Check if bonus is still valid for today
+						bool bBonusActive = false;
+						int64 iBonusStartTime = GetKeyNum("SKILLGAIN_BONUS_STARTTIME");
+						if ( iBonusStartTime > 0 )
+						{
+							// Check if bonus time has expired
+							const int64 iBonusMaxMs = iBonusHoursMax * 60 * 60 * MSECS_PER_SEC;
+							const int64 iElapsedMs = iCurrentTime - iBonusStartTime;
+							if ( iElapsedMs < iBonusMaxMs )
+								bBonusActive = true;
+						}
+						
+						if ( bBonusActive )
 						{
 							int64 iMultiplier = GetKeyNum("SKILLGAIN_BONUS_MULTIPLIER");
 							if ( iMultiplier == 0 )
