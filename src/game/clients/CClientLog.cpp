@@ -3,17 +3,591 @@
 #include "../../common/crypto/CCrypto.h"
 #include "../../common/crypto/CHuffman.h"
 #include "../../common/sphere_library/CSFileList.h"
+#include "../../common/sphere_library/sstringobjs.h"
 #include "../../common/CLog.h"
 #include "../../common/CException.h"
 #include "../../common/CExpression.h"
+#include "../../common/sphereversion.h"
 #include "../../network/CIPHistoryManager.h"
 #include "../../network/CNetworkManager.h"
 #include "../../network/send.h"
 #include "../CServer.h"
+#include "../CWorld.h"
+#include "../CWorldGameTime.h"
 #include "CClient.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
 
 namespace zlib {
 #include <zlib/zlib.h>
+}
+
+namespace
+{
+    constexpr lpctstr kWebAdminPrefix = "/admin/api/";
+
+    class WebAdminConsoleCapture : public CTextConsole
+    {
+    public:
+        mutable CSString m_Buffer;
+
+        virtual PLEVEL_TYPE GetPrivLevel() const override
+        {
+            return PLEVEL_Owner;
+        }
+
+        virtual lpctstr GetName() const override
+        {
+            return "WebAdmin";
+        }
+
+        virtual void SysMessage(lpctstr pszMessage) const override
+        {
+            if (!pszMessage)
+                return;
+
+            auto* self = const_cast<WebAdminConsoleCapture*>(this);
+            self->m_Buffer += pszMessage;
+
+            const size_t len = strlen(pszMessage);
+            if (len == 0 || pszMessage[len - 1] != '\n')
+                self->m_Buffer += '\n';
+        }
+    };
+
+    const char* WebAdminServerModeName(SERVMODE_TYPE mode) noexcept
+    {
+        switch (mode)
+        {
+            case SERVMODE_Run: return "run";
+            case SERVMODE_Saving: return "saving";
+            case SERVMODE_Loading: return "loading";
+            case SERVMODE_ResyncLoad: return "resyncload";
+            case SERVMODE_RestockAll: return "restock";
+            case SERVMODE_GarbageCollection: return "garbage";
+            case SERVMODE_ResyncPause: return "resyncpause";
+            case SERVMODE_PreLoadingINI: return "preloading";
+            case SERVMODE_Exiting: return "exiting";
+            default: break;
+        }
+        return "unknown";
+    }
+
+    CSString WebAdminJsonEscape(lpctstr text)
+    {
+        CSString out;
+        if (!text)
+            return out;
+
+        for (const tchar* it = text; *it != '\0'; ++it)
+        {
+            const unsigned char ch = static_cast<unsigned char>(*it);
+            switch (*it)
+            {
+                case '\\': out += "\\\\"; break;
+                case '"': out += "\\\""; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default:
+                {
+                    if (ch < 0x20)
+                    {
+                        tchar buf[7];
+                        snprintf(buf, sizeof(buf), "\\u%04x", ch);
+                        out += buf;
+                    }
+                    else
+                    {
+                        out += *it;
+                    }
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    CSString WebAdminJsonQuote(lpctstr text)
+    {
+        CSString quoted;
+        quoted += '"';
+        quoted += WebAdminJsonEscape(text);
+        quoted += '"';
+        return quoted;
+    }
+
+    CSString WebAdminUrlDecode(lpctstr text)
+    {
+        CSString out;
+        if (!text)
+            return out;
+
+        for (size_t i = 0; text[i] != '\0'; ++i)
+        {
+            const tchar ch = text[i];
+            if (ch == '+')
+            {
+                out += ' ';
+            }
+            else if (ch == '%' && text[i + 1] && text[i + 2] && std::isxdigit(static_cast<unsigned char>(text[i + 1])) && std::isxdigit(static_cast<unsigned char>(text[i + 2])))
+            {
+                tchar hex[3];
+                hex[0] = text[i + 1];
+                hex[1] = text[i + 2];
+                hex[2] = '\0';
+                const int val = static_cast<int>(strtol(hex, nullptr, 16));
+                out += static_cast<tchar>(val);
+                i += 2;
+            }
+            else
+            {
+                out += ch;
+            }
+        }
+        return out;
+    }
+
+    bool WebAdminGetParam(lpctstr data, lpctstr name, CSString& out)
+    {
+        if (!data || !*data || !name || !*name)
+            return false;
+
+        TemporaryString buffer(data);
+        tchar* raw = buffer.buffer();
+        if (!raw)
+            return false;
+
+        tchar* tokens[64];
+        const int count = Str_ParseCmds(raw, tokens, ARRAY_COUNT(tokens), "&");
+        if (count <= 0)
+            return false;
+
+        const size_t nameLen = strlen(name);
+        for (int i = 0; i < count; ++i)
+        {
+            tchar* entry = tokens[i];
+            if (!entry)
+                continue;
+
+            entry = Str_TrimWhitespace(entry);
+            if (*entry == '\0')
+                continue;
+
+            if (strnicmp(entry, name, nameLen) != 0)
+                continue;
+
+            tchar* value = entry + nameLen;
+            if (*value == '=')
+            {
+                ++value;
+            }
+            else if (*value != '\0')
+            {
+                continue;
+            }
+
+            out = WebAdminUrlDecode(value);
+            return true;
+        }
+
+        return false;
+    }
+
+    CSString WebAdminExtractBearerToken(lpctstr header)
+    {
+        CSString token;
+        if (!header)
+            return token;
+
+        TemporaryString copy(header);
+        tchar* value = Str_TrimWhitespace(copy.buffer());
+        if (!value || *value == '\0')
+            return token;
+
+        for (tchar* p = value; *p != '\0'; ++p)
+        {
+            if (*p == '\r' || *p == '\n')
+            {
+                *p = '\0';
+                break;
+            }
+        }
+
+        while (*value == ':' || *value == ';')
+        {
+            ++value;
+            GETNONWHITESPACE(value);
+        }
+
+        if (!strnicmp(value, "Bearer", 6))
+        {
+            value += 6;
+            GETNONWHITESPACE(value);
+        }
+
+        tchar* tail = value + strlen(value);
+        while (tail > value && std::isspace(static_cast<unsigned char>(tail[-1])))
+        {
+            --tail;
+            *tail = '\0';
+        }
+
+        token = value;
+        return token;
+    }
+
+    bool WebAdminParseBool(const CSString& value)
+    {
+        if (value.IsEmpty())
+            return false;
+
+        const lpctstr psz = value.GetBuffer();
+        if (!strcmpi(psz, "1") || !strcmpi(psz, "true") || !strcmpi(psz, "yes") || !strcmpi(psz, "on"))
+            return true;
+        if (!strcmpi(psz, "0") || !strcmpi(psz, "false") || !strcmpi(psz, "no") || !strcmpi(psz, "off"))
+            return false;
+        return false;
+    }
+
+    bool WebAdminIsIpAllowed(const CSocketAddressIP& addr)
+    {
+        if (g_Cfg.m_sWebAdminAllowedIPs.IsEmpty())
+            return addr.IsLocalAddr();
+
+        TemporaryString buffer(g_Cfg.m_sWebAdminAllowedIPs.GetBuffer());
+        tchar* raw = buffer.buffer();
+        if (!raw)
+            return addr.IsLocalAddr();
+
+        tchar* entries[64];
+        const int count = Str_ParseCmds(raw, entries, ARRAY_COUNT(entries), ",");
+        if (count <= 0)
+            return addr.IsLocalAddr();
+
+        const CSString ip(addr.GetAddrStr());
+        for (int i = 0; i < count; ++i)
+        {
+            tchar* entry = entries[i];
+            if (!entry)
+                continue;
+
+            entry = Str_TrimWhitespace(entry);
+            if (*entry == '\0')
+                continue;
+
+            if (*entry == '*')
+                return true;
+
+            if (!strnicmp(entry, "local", 5) || !strnicmp(entry, "localhost", 9))
+            {
+                if (addr.IsLocalAddr())
+                    return true;
+                continue;
+            }
+
+            if (!ip.IsEmpty() && (ip.CompareNoCase(entry) == 0))
+                return true;
+        }
+
+        return false;
+    }
+
+    void WebAdminSendJsonResponse(CClient* client, int statusCode, lpctstr statusText, const CSString& body)
+    {
+        const CSTime now = CSTime::GetCurrentTime();
+        const char* dateStr = now.FormatGmt(nullptr);
+
+        CSString header;
+        header.Format(
+            "HTTP/1.1 %d %s\r\n"
+            "Date: %s\r\n"
+            "Server: " SPHERE_TITLE " " SPHERE_BUILD_NAME_VER_PREFIX SPHERE_BUILD_INFO_STR "\r\n"
+            "Content-Type: application/json; charset=utf-8\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n\r\n",
+            statusCode, statusText, dateStr, body.GetLength());
+
+        CSString response = header;
+        response += body;
+
+        PacketWeb packet;
+        packet.setData(reinterpret_cast<const byte*>(response.GetBuffer()), static_cast<uint>(response.GetLength()));
+        packet.send(client);
+    }
+
+    void WebAdminSendError(CClient* client, int statusCode, lpctstr statusText, lpctstr code, lpctstr message)
+    {
+        CSString body = "{\"status\":\"error\"";
+        if (code && *code)
+        {
+            body += ",\"code\":";
+            body += WebAdminJsonQuote(code);
+        }
+        if (message && *message)
+        {
+            body += ",\"message\":";
+            body += WebAdminJsonQuote(message);
+        }
+        body += "}";
+        WebAdminSendJsonResponse(client, statusCode, statusText, body);
+    }
+
+    bool WebAdminPerformSave(bool includeStatics, CSString& error)
+    {
+        if (g_World.IsSaving())
+        {
+            error = "A world save is already running.";
+            return false;
+        }
+
+        if (!g_World.Save(true))
+        {
+            error = "Unable to save the world state.";
+            return false;
+        }
+
+        if (includeStatics)
+            g_World.SaveStatics();
+
+        return true;
+    }
+
+    CSString WebAdminRunConsoleCommand(const CSString& command)
+    {
+        WebAdminConsoleCapture capture;
+        CSString cmdText = command;
+        g_Serv.OnConsoleCmd(cmdText, &capture);
+
+        if (capture.m_Buffer.IsEmpty())
+            capture.m_Buffer = "Command executed.";
+        return capture.m_Buffer;
+    }
+
+    bool WebAdminHandleRequest(CClient* client, lpctstr method, lpctstr target, lpctstr body, size_t bodyLen, lpctstr authHeader)
+    {
+        if (!g_Cfg.m_fWebAdminEnable || !client || !method || !target)
+            return false;
+
+        TemporaryString mutableTarget(target);
+        tchar* requestLine = mutableTarget.buffer();
+        if (!requestLine)
+            return false;
+
+        requestLine = Str_TrimWhitespace(requestLine);
+        if (!requestLine || *requestLine == '\0')
+            return false;
+
+        tchar* query = strchr(requestLine, '?');
+        if (query)
+        {
+            *query = '\0';
+            ++query;
+        }
+
+        const size_t prefixLen = strlen(kWebAdminPrefix);
+        if (strnicmp(requestLine, kWebAdminPrefix, prefixLen) != 0)
+            return false;
+
+        tchar* routePtr = requestLine + prefixLen;
+        while (*routePtr == '/')
+            ++routePtr;
+
+        if (*routePtr == '\0')
+        {
+            WebAdminSendError(client, 404, "Not Found", "unknown_endpoint", "Missing admin API route.");
+            return true;
+        }
+
+        tchar* extra = strchr(routePtr, '/');
+        if (extra)
+            *extra = '\0';
+
+        // trim trailing slash if present
+        const size_t routeLen = strlen(routePtr);
+        if (routeLen > 0 && routePtr[routeLen - 1] == '/')
+            routePtr[routeLen - 1] = '\0';
+
+        CSString route(routePtr);
+        route.MakeLower();
+
+        CSString queryStr = query ? query : "";
+        CSString bodyStr;
+        if (body && bodyLen > 0)
+            bodyStr = CSString(body, static_cast<int>(bodyLen));
+        else if (body)
+            bodyStr = body;
+
+        CSString token;
+        if (authHeader && *authHeader)
+            token = WebAdminExtractBearerToken(authHeader);
+        if (token.IsEmpty())
+        {
+            WebAdminGetParam(queryStr.GetBuffer(), "token", token) || WebAdminGetParam(bodyStr.GetBuffer(), "token", token);
+        }
+
+        if (!WebAdminIsIpAllowed(client->GetPeer()))
+        {
+            WebAdminSendError(client, 403, "Forbidden", "ip_not_allowed", "This address is not allowed to call the admin API.");
+            return true;
+        }
+
+        if (!g_Cfg.m_sWebAdminToken.IsEmpty())
+        {
+            if (token.IsEmpty() || token.CompareNoCase(g_Cfg.m_sWebAdminToken.GetBuffer()) != 0)
+            {
+                g_Log.Event(LOGM_HTTP | LOGL_WARN, "%x:WebAdmin invalid token from %s, received='%s' (len=%d), expected='%s' (len=%d)\n",
+                    client->GetSocketID(), client->GetPeerStr(), token.GetBuffer(), token.GetLength(), g_Cfg.m_sWebAdminToken.GetBuffer(), g_Cfg.m_sWebAdminToken.GetLength());
+                WebAdminSendError(client, 401, "Unauthorized", "invalid_token", "Provide a valid bearer token.");
+                return true;
+            }
+        }
+
+        auto logAction = [&](lpctstr action)
+        {
+            g_Log.Event(LOGM_HTTP | LOGL_EVENT, "%x:WebAdmin %s request '%s' from %s\n", client->GetSocketID(), action, route.GetBuffer(), client->GetPeerStr());
+        };
+
+        if (route.CompareNoCase("status") == 0 || route.CompareNoCase("health") == 0)
+        {
+            if (strnicmp(method, "GET", 3) != 0)
+            {
+                WebAdminSendError(client, 405, "Method Not Allowed", "method_not_allowed", "Use GET for this endpoint.");
+                return true;
+            }
+
+            logAction("status");
+
+            const llong uptimeSec = std::max<llong>(0, CWorldGameTime::GetCurrentTime().GetTimeDiff(g_World._iTimeStartup) / MSECS_PER_SEC);
+            const SERVMODE_TYPE mode = g_Serv.GetServerMode();
+            const size_t clients = g_Serv.StatGet(SERV_STAT_CLIENTS);
+            const size_t items = g_Serv.StatGet(SERV_STAT_ITEMS);
+            const size_t chars = g_Serv.StatGet(SERV_STAT_CHARS);
+
+            CSString bodyJson;
+            bodyJson.Format(
+                "{\"status\":\"ok\",\"clients\":%" PRIuSIZE_T ",\"items\":%" PRIuSIZE_T ",\"chars\":%" PRIuSIZE_T ",\"uptime_sec\":%" PRId64 ",\"server_mode\":\"%s\",\"is_saving\":%s,\"resync_pause\":%s,\"exit_flag\":%d",
+                clients,
+                items,
+                chars,
+                uptimeSec,
+                WebAdminServerModeName(mode),
+                g_World.IsSaving() ? "true" : "false",
+                g_Serv.m_fResyncPause ? "true" : "false",
+                g_Serv.GetExitFlag());
+
+            if (g_Serv.m_timeShutdown > 0)
+            {
+                CSString extraField;
+                extraField.Format(",\"scheduled_shutdown\":%" PRIi64, g_Serv.m_timeShutdown);
+                bodyJson += extraField;
+            }
+
+            bodyJson += "}";
+            WebAdminSendJsonResponse(client, 200, "OK", bodyJson);
+            return true;
+        }
+
+        if (route.CompareNoCase("command") == 0)
+        {
+            if (strnicmp(method, "POST", 4) != 0)
+            {
+                WebAdminSendError(client, 405, "Method Not Allowed", "method_not_allowed", "Use POST for this endpoint.");
+                return true;
+            }
+
+            CSString cmd;
+            if (!WebAdminGetParam(bodyStr.GetBuffer(), "cmd", cmd))
+                WebAdminGetParam(queryStr.GetBuffer(), "cmd", cmd);
+
+            if (cmd.IsEmpty())
+            {
+                WebAdminSendError(client, 400, "Bad Request", "missing_cmd", "Provide the cmd parameter.");
+                return true;
+            }
+
+            logAction("command");
+
+            const CSString output = WebAdminRunConsoleCommand(cmd);
+            CSString bodyJson = "{\"status\":\"ok\",\"command\":";
+            bodyJson += WebAdminJsonQuote(cmd.GetBuffer());
+            bodyJson += ",\"output\":";
+            bodyJson += WebAdminJsonQuote(output.GetBuffer());
+            bodyJson += "}";
+            WebAdminSendJsonResponse(client, 200, "OK", bodyJson);
+            return true;
+        }
+
+        if (route.CompareNoCase("save") == 0)
+        {
+            if (strnicmp(method, "POST", 4) != 0)
+            {
+                WebAdminSendError(client, 405, "Method Not Allowed", "method_not_allowed", "Use POST for this endpoint.");
+                return true;
+            }
+
+            CSString staticsValue;
+            bool includeStatics = false;
+            if (WebAdminGetParam(bodyStr.GetBuffer(), "statics", staticsValue) || WebAdminGetParam(queryStr.GetBuffer(), "statics", staticsValue))
+                includeStatics = WebAdminParseBool(staticsValue);
+
+            CSString error;
+            if (!WebAdminPerformSave(includeStatics, error))
+            {
+                WebAdminSendError(client, 409, "Conflict", "save_in_progress", error.GetBuffer());
+                return true;
+            }
+
+            logAction("save");
+
+            CSString bodyJson;
+            bodyJson.Format("{\"status\":\"ok\",\"action\":\"save\",\"statics\":%s}", includeStatics ? "true" : "false");
+            WebAdminSendJsonResponse(client, 200, "OK", bodyJson);
+            return true;
+        }
+
+        if (route.CompareNoCase("restart") == 0 || route.CompareNoCase("shutdown") == 0)
+        {
+            if (strnicmp(method, "POST", 4) != 0)
+            {
+                WebAdminSendError(client, 405, "Method Not Allowed", "method_not_allowed", "Use POST for this endpoint.");
+                return true;
+            }
+
+            if (g_Serv.GetExitFlag() != 0)
+            {
+                WebAdminSendError(client, 409, "Conflict", "shutdown_pending", "Server shutdown is already pending.");
+                return true;
+            }
+
+            CSString staticsValue;
+            bool includeStatics = false;
+            if (WebAdminGetParam(bodyStr.GetBuffer(), "statics", staticsValue) || WebAdminGetParam(queryStr.GetBuffer(), "statics", staticsValue))
+                includeStatics = WebAdminParseBool(staticsValue);
+
+            CSString error;
+            if (!WebAdminPerformSave(includeStatics, error))
+            {
+                WebAdminSendError(client, 409, "Conflict", "save_failed", error.GetBuffer());
+                return true;
+            }
+
+            const bool isRestart = (route.CompareNoCase("restart") == 0);
+            logAction(isRestart ? "restart" : "shutdown");
+
+            CSString bodyJson;
+            bodyJson.Format("{\"status\":\"ok\",\"action\":\"%s\",\"statics\":%s,\"exit_flag\":2}", route.GetBuffer(), includeStatics ? "true" : "false");
+            WebAdminSendJsonResponse(client, 200, "OK", bodyJson);
+
+            g_Serv.SetExitFlag(2);
+            return true;
+        }
+
+        WebAdminSendError(client, 404, "Not Found", "unknown_endpoint", "Unknown admin API path.");
+        return true;
+    }
 }
 
 /////////////////////////////////////////////////////////////////
@@ -687,13 +1261,18 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 	if ( GetConnectType() != CONNECT_HTTP )
 		return false;
 
-    if (uiLen > HTTPREQ_MAX_SIZE)    // request too long
-        goto httpreq_err_long;
+    const size_t uiRawRequestLen = uiLen;
+	char chSavedTail = '\0';
+	if (uiLen > HTTPREQ_MAX_SIZE)    // request too long
+		goto httpreq_err_long;
 
-	// ensure request is null-terminated (if the request is well-formed, we are overwriting a trailing \n here)
-	pRequest[uiLen - 1] = '\0';
+	if (uiLen > 0)
+	{
+		chSavedTail = reinterpret_cast<char*>(pRequest)[uiLen - 1];
+		reinterpret_cast<char*>(pRequest)[uiLen - 1] = '\0';
+	}
 
-    uiLen = strlen(reinterpret_cast<const char*>(pRequest));
+	uiLen = strlen(reinterpret_cast<const char*>(pRequest));
     if (uiLen > HTTPREQ_MAX_SIZE)     // too long request
     {
     httpreq_err_long:
@@ -713,6 +1292,7 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 	bool fKeepAlive = false;
 	CSTime dateIfModifiedSince;
 	tchar * pszReferer = nullptr;
+	CSString sAuthHeader;
 	uint uiContentLength = 0;
 	for ( int j = 1; j < iQtyLines; ++j )
 	{
@@ -727,6 +1307,12 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 		else if ( !strnicmp(pszArgs, "Referer:", 8) )
 		{
 			pszReferer = pszArgs+8;
+		}
+		else if ( !strnicmp(pszArgs, "Authorization:", 13) )
+		{
+			pszArgs += 13;
+			GETNONWHITESPACE(pszArgs);
+			sAuthHeader = pszArgs;
 		}
 		else if ( !strnicmp(pszArgs, "Content-Length:", 15) )
 		{
@@ -794,11 +1380,34 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 	if (iSocketRet)
 		return false;
 
-	if ( memcmp(ppLines[0], "POST", 4) == 0 )
+	const bool isPostRequest = (memcmp(ppLines[0], "POST", 4) == 0);
+	const bool isGetRequest = (!memcmp(ppLines[0], "GET", 3));
+	const tchar* postPayload = nullptr;
+	size_t postPayloadLen = 0;
+	CSString postPayloadStorage;
+	if (isPostRequest)
 	{
-		if (uiContentLength > strlen(ppLines[iQtyLines-1]) )
-			return false;
+		if (uiContentLength > 0 && uiContentLength <= uiRawRequestLen)
+		{
+			postPayloadStorage.CopyLen(reinterpret_cast<char*>(pRequest) + (uiRawRequestLen - uiContentLength), static_cast<int>(uiContentLength));
+			if (uiContentLength > 0)
+				postPayloadStorage.SetAt(static_cast<int>(uiContentLength - 1), chSavedTail);
+			postPayload = postPayloadStorage.GetBuffer();
+			postPayloadLen = uiContentLength;
+		}
+		else
+		{
+			postPayload = ppLines[iQtyLines - 1];
+			postPayloadLen = strlen(postPayload);
+		}
+	}
 
+	lpctstr pszAuthHeader = sAuthHeader.IsEmpty() ? nullptr : sAuthHeader.GetBuffer();
+	if ( WebAdminHandleRequest(this, ppRequest[0], ppRequest[1], postPayload, postPayloadLen, pszAuthHeader) )
+		return false;
+
+	if ( isPostRequest )
+	{
 		// POST /--WEBBOT-SELF-- HTTP/1.1
 		// Referer: http://127.0.0.1:2593/spherestatus.htm
 		// Content-Type: application/x-www-form-urlencoded
@@ -813,7 +1422,7 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 			pWebPage = g_Cfg.FindWebPage(pszReferer);
 		if ( pWebPage )
 		{
-			if ( pWebPage->ServPagePost(this, ppRequest[1], ppLines[iQtyLines-1], uiContentLength) )
+			if ( pWebPage->ServPagePost(this, ppRequest[1], const_cast<tchar*>(postPayload), uiContentLength) )
 			{
 				if ( fKeepAlive )
 					return true;
@@ -822,7 +1431,7 @@ bool CClient::OnRxWebPageRequest( byte * pRequest, size_t uiLen )
 			return false;
 		}
 	}
-	else if ( !memcmp(ppLines[0], "GET", 3) )
+	else if ( isGetRequest )
 	{
 		// GET /pagename.htm HTTP/1.1\r\n
 		// If-Modified-Since: Fri, 17 Dec 1999 14:59:20 GMT\r\n

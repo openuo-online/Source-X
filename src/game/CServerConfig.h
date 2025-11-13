@@ -642,6 +642,10 @@ public:
 	CSStringSortArray m_PrivCommands[PLEVEL_QTY];		// what command are allowed for a priv level?
 
 public:
+	bool m_fWebAdminEnable;
+	CSString m_sWebAdminToken;
+	CSString m_sWebAdminAllowedIPs;
+
 	CObjNameSortArray m_Servers;	// Servers list. we act like the login server with this.
     CObjUniquePtrNameSortVector<CResourceNamedDef> m_Functions;	// Subroutines that can be used in scripts.
 	CRegionLinks m_RegionDefs;		// All [REGION ] stored inside.

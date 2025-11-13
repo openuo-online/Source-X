@@ -230,6 +230,9 @@ CServerConfig::CServerConfig()
 
 	m_iCommandLog		= 0;
 	m_fTelnetLog		= true;
+	m_fWebAdminEnable = false;
+	m_sWebAdminToken.Clear();
+	m_sWebAdminAllowedIPs = "127.0.0.1,::1";
 
 	m_fUsecrypt 		= true;		// Server wants crypted client?
 	m_fUsenocrypt		= false;	// Server wants unencrypted client? (version guessed by cliver)
@@ -735,6 +738,9 @@ enum RC_TYPE
 	RC_VERSION,
 	RC_WALKBUFFER,
 	RC_WALKREGEN,
+	RC_WEBADMIN,
+	RC_WEBADMINALLOW,
+	RC_WEBADMINTOKEN,
 	RC_WOOLGROWTHTIME,			// m_iWoolGrowthTime
 	RC_WOPCOLOR,
 	RC_WOPFONT,
@@ -1030,6 +1036,9 @@ const CAssocReg CServerConfig::sm_szLoadKeys[RC_QTY + 1]
 	{ "VERSION",				{ ELEM_VOID,	0												}},
 	{ "WALKBUFFER",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWalkBuffer)			}},
 	{ "WALKREGEN",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWalkRegen)			}},
+	{ "WEBADMIN",				{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_fWebAdminEnable)		}},
+	{ "WEBADMINALLOW",			{ ELEM_CSTRING,	static_cast<uint>OFFSETOF(CServerConfig,m_sWebAdminAllowedIPs)	}},
+	{ "WEBADMINTOKEN",			{ ELEM_CSTRING,	static_cast<uint>OFFSETOF(CServerConfig,m_sWebAdminToken)		}},
 	{ "WOOLGROWTHTIME",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWoolGrowthTime)		}},
 	{ "WOPCOLOR",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWordsOfPowerColor)	}},
 	{ "WOPFONT",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWordsOfPowerFont)		}},

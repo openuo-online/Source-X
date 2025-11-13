@@ -16,6 +16,9 @@ Ultima Online game server, developed in C++.
 ## Getting Started tutorial
 If you're new to the Sphere server and want to setup your first shard, [this is your go-to guide](docs/Getting-started.md)!
 
+Need a lightweight way to run maintenance commands or trigger safe restarts from a
+web dashboard? Check out the new [Web Admin API guide](docs/WebAdmin.md).
+
 ## Releases
 
 ### **Core**

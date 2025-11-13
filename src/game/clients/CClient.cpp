@@ -90,16 +90,25 @@ CClient::~CClient() noexcept
 
 	// update ip history
 	HistoryIP& history = g_NetworkManager.getIPHistoryManager().getHistoryForIP(GetPeer());
-	if ( GetConnectType() != CONNECT_GAME )
-    {
-        EXC_TRYSUB("m_iPendingConnectionRequests")
-
-        ASSERT(history.m_iPendingConnectionRequests > 0);
-		-- history.m_iPendingConnectionRequests;
-
-        EXC_CATCHSUB("m_iPendingConnectionRequests");
-    }
-    -- history.m_iAliveSuccessfulConnections;
+	const CONNECT_TYPE eConnectType = GetConnectType();
+	switch ( eConnectType )
+	{
+		case CONNECT_GAME:
+		case CONNECT_HTTP:
+		case CONNECT_TELNET:
+		case CONNECT_UOG:
+		case CONNECT_AXIS:
+			break;
+		default:
+		{
+			EXC_TRYSUB("m_iPendingConnectionRequests")
+			ASSERT(history.m_iPendingConnectionRequests > 0);
+			--history.m_iPendingConnectionRequests;
+			EXC_CATCHSUB("m_iPendingConnectionRequests");
+			break;
+		}
+	}
+	--history.m_iAliveSuccessfulConnections;
 
 	const bool fWasChar = ( m_pChar != nullptr );
 
