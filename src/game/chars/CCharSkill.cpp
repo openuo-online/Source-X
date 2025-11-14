@@ -419,25 +419,7 @@ void CChar::Skill_Experience( SKILL_TYPE skill, int iDifficulty )
 	// Automatically expires at midnight or after the time limit
 	// Can be controlled via TAG.SKILLGAIN_BONUS_HOURS (default: 2 hours per day)
 	// Can be controlled via TAG.SKILLGAIN_BONUS_MULTIPLIER (default: 2x)
-	if ( IsPlayer() && m_pClient )
-	{
-		int64 iBonusHoursMax = GetKeyNum("SKILLGAIN_BONUS_HOURS");
-		if ( iBonusHoursMax == 0 )
-			iBonusHoursMax = 2; // Default 2 hours per day
-		if ( iBonusHoursMax > 0 )
-		{
-			const CSTime currentDate = CSTime::GetCurrentTime();
-			const int iCurrentDay = currentDate.GetYear() * 10000 + currentDate.GetMonth() * 100 + currentDate.GetDay();
-			const int iLastBonusDay = (int)GetKeyNum("SKILLGAIN_BONUS_DAY");
-			
-			// Check if it's a new day (past midnight), reset bonus
-			if ( iCurrentDay != iLastBonusDay )
-			{
-				SetKeyNum("SKILLGAIN_BONUS_DAY", iCurrentDay);
-				SetKeyNum("SKILLGAIN_BONUS_STARTTIME", 0);  // Clear start time for new day
-			}
-		}
-	}
+	// Note: The bonus is auto-activated on first skill gain of a new day (see below)
 
 	CScriptTriggerArgs pArgs(0, iChance, iSkillMax);
 	if ( IsTrigUsed(TRIGGER_SKILLGAIN) )
