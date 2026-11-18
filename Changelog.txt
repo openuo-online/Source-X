@@ -4074,6 +4074,77 @@ When setting a property like MORE to the a spell or skill defname, trying to rea
 
 17-11-2025, Nolok
 - Fixed: CAN_O_NOSLEEP was not considered/honored at server startup (Issue #1440).
-- Changed: Object timers are now saved in worldsave files as TIMERMS, to avoid ambiguity and reliance on git build number to determine if TIMER expressed a number in seconds or milliseconds.
+- Fixed: Chars not always going in sleeping state when appropriate (Issue #1249).
+- Changed: Object timers are now saved in worldsave files as TIMERMS, to avoid ambiguity and reliance on git build number to
+    determine if TIMER expressed a number in seconds or milliseconds.
 - Changed: Added 5 seconds timeout to DNS hostname resolution at startup (avoid getting stuck when connectivity is enabled but not working).
 - Changed: CANMASK formatted in worldsave files as hexadecimal number, instead of decimal.
+
+2-12-2025, canerksk
+- Changed: Duplicate message deleted. (Issue #1519).
+
+3-12-2025, Nolok
+- Fixed: Items were always put into 'sleeping' ticking state when moved inside a container (Issue #1272).
+- Fixed: Failed assertion when a char speaks in a sector with a communication crystal and other items (Issue #1429).
+- Fixed: "Old VarDef value..." log message being shown while resyncing a file even if the VarDef (DEF) didn't change (Issue #1437).
+- Fixed: Str_To* methods (for string to number conversion) didn't correctly parse a single '0' if interpreting it as a hex number. This caused also 'mobtypes.txt' to not being parsed correctly.
+- Added: SERV.MAP.n.SECTOR.n returns 1 if the sector number is valid, 0 otherwise.
+- Added: Clear Console entry on taskbar icon of sphere console window on Windows OS (Issue - feature request #1516).
+
+4-12-2025, Nolok
+- Fixed: Malformed spell flags being returned via scripts.
+- Fixed: REGION ISEVENT didn't (always?) find REGIONTYPES.
+
+09-03-2026, Mulambo
+- Changed: Debug DEBUGF_WALK now works only for players (was for monster too), to increase readility in logs.
+- Changed: Improved OpenDoor Macro (Issue #1510) to use following formula with priorities (1 is best, 5 is worst, arrow is player facing):
+    5|4|4|4|5
+    5|3|↓|3|5
+    5|2|1|2|5
+    5|3|2|3|5
+    5|5|4|5|5
+- Added: Exposed skill effect (local.effect, I/O) in @start and @skillStart triggers (usable for changing the value with some formula, rather than range / flat value from skill effect property.
+- Added: Automated Debian package on master brach. Debian packge is currently not meant for production and needs testing (especially updating).
+- Fixed: Curing character with item as the caster crashes sphere (Issue #1549)
+- Fixed: Animate Dead spell crashing Sphere (Issue #1548)
+
+11-03-2026, Mulambo
+- Added: New experimental flag EF_WalkBypassMonsters. This will override hardcoded client behaviour that prevents stepping over NPCs without max stamina (like GM can). However, this could cause flickering or lags to clients and should be used with caution.
+
+16-03-2026, Mulambo
+- Fixed: Issue with loosing target when somebody dies in combat (#1559)
+
+17-03-2026, Mulambo
+- Modified CombatHitChanceEra:
+  - Fixed: IncreaseDefChance on AOS formula (2) is now properly calculated from defender, not the attacker.
+  - Fixed: Hit chance to paralyzed targets with sphere custom (0) formula is now 80-100% (was 0-10%).
+  - Added: Implemented Hit chance increase / decrease to sphere custom formula (0).
+- Fixed: Equiping armor and weapon with spelleffect could crash the SphereServer (#1538)
+
+31-03-2026, Drk84
+- Added: New locals for the @SpellEffect/@Effect triggers:
+         local.IsSpellReflected (Read Only): Indicates if the spell was reflected because of the magic reflect flag.
+         local.BypassMagicReflection (R/W): When set to a value above 0, bypass the magic reflection.
+
+- Fixed: Poison buff was using the expired timer duration instead of the poison delay timer.
+         Notice that the delay values of poison are hardcoded and you have to use addbuff function if you change the local.delay in @SpellEffectTick/@EffectTick
+
+02-04-2026, Mulambo
+- Fixed: Timer on field spells with `SPELLFLAG_FIELD_RANDOMDECAY` was incrementally increasing for each field item created.
+
+19-05-2026, Mulambo
+- Fixed: logging telnet commands (#1580).
+- Fixed: when using invalid resource in corpses, error will be show in console (#1574).
+- Changed: PacketObjectStatus (0x11) show percentual hitpoints for items and chars, just like packet 0xA1 (Hitpoints update) (#1573).
+- Added: templates can now be used when carving corpses (#1574).
+
+19-05-2026, nightNR
+- Fixed: pre-AOS armor rating (AR) calculation (#1550).
+- Fixed NPCs can't cast spells from spellbook after respawn (#1551).
+
+23-07-2026, canerksk
+- Added: New local variable local.Sound to @SpellFail/@Fail triggers (R/W). If you set local.sound = 0, no sound will be played.
+
+14-09-2026, Mulambo
+  WARNING! POTENTIALLY BREAKING CHANGE!
+- Changed: Chance to hit in `CombatDamageEra=0` (Sphere custom) now returns calculated value, instead of random number from that value.

@@ -1462,6 +1462,7 @@ void CItem::_SetTimeout( int64 iMsecs )
 
 bool CItem::MoveToUpdate(const CPointMap& pt, bool fForceFix)
 {
+    ADDTOCALLSTACK("CItem::MoveToUpdate");
 	bool fReturn = MoveTo(pt, fForceFix);
 	Update();
 	return fReturn;
@@ -1469,6 +1470,7 @@ bool CItem::MoveToUpdate(const CPointMap& pt, bool fForceFix)
 
 bool CItem::MoveToDecay(const CPointMap & pt, int64 iMsecsTimeout, bool fForceFix)
 {
+    ADDTOCALLSTACK("CItem::MoveToDecay");
 	if (!MoveToUpdate(pt, fForceFix))
 		return false;
 	SetDecayTime(iMsecsTimeout);
@@ -1483,7 +1485,7 @@ void CItem::SetDecayTime(int64 iMsecsTimeout, bool fOverrideAlways)
 
 	if (!fOverrideAlways && _IsTimerSet() && !IsAttr(ATTR_DECAY))
 	{
-		// Already a timer here (and it's not a decay timer). Let it expire on it's own.
+        // Already a timer here (and it's not a decay timer). Let it expire on its own.
 		return;
 	}
 
@@ -2075,7 +2077,9 @@ bool CItem::SetBase( CItemBase * pItemDef )
 	ADDTOCALLSTACK("CItem::SetBase");
 	// Total change of type. (possibly dangerous)
 
-	CItemBase * pItemOldDef = Item_GetDef();
+    CItemBase * pItemOldDef = nullptr;
+    if (m_BaseRef.GetRef())
+        pItemOldDef = Item_GetDef();
 
 	if ( pItemDef == nullptr || pItemDef == pItemOldDef )
 		return false;
@@ -6162,28 +6166,37 @@ bool CItem::_CanHoldTimer() const
 	return true;
 }
 
-bool CItem::_TickableStateBase() const
+bool CItem::_CanTick(bool fParentGoingToSleep) const
 {
-    //ADDTOCALLSTACK_DEBUG("CItem::_TickableStateBase");
+    //ADDTOCALLSTACK_DEBUG("CItem::_CanTick");
     EXC_TRY("Able to tick?");
 
-	const CObjBase* pCont = GetContainer();
-    const bool fAllowContained = (HAS_FLAGS_STRICT(g_Cfg.m_uiItemTimers, ITEM_CANTIMER_IN_CONTAINER) || Can(CAN_I_TIMER_CONTAINED));
+    const CSObjCont* pParent = GetParent();
+
+    // Sanity check: isn't it placed in the world?
+    ASSERT(pParent);
+
+    const CObjBase* pCont = dynamic_cast<const CObjBase*>(pParent);
     const bool fCharCont = pCont && pCont->IsChar();
+    const bool fAllowContained = (HAS_FLAGS_STRICT(g_Cfg.m_uiItemTimers, ITEM_CANTIMER_IN_CONTAINER) || Can(CAN_I_TIMER_CONTAINED));
     if (fCharCont && fAllowContained)
 	{
-        auto pCharCont = static_cast<const CChar*>(pCont);
-        if (!pCharCont->_CanTick())
-            return false;
+        if (!Can(CAN_O_NOSLEEP))
+        {
+            auto pCharCont = static_cast<const CChar*>(pCont);
+            if (!pCharCont->_CanTick(fParentGoingToSleep))
+                return false;
+        }
     }
 
     if (!pCont && IsAttr(ATTR_DECAY))
     {
-        // If pCont is not a CObjBase, it will most probably be a CSector. Decaying items won't go to sleep.
-        return CObjBase::_TickableStateBase();
+        // If pCont is not a CObjBase, it will most probably be a CSector object container. Decaying items won't go to sleep.
+        ASSERT(dynamic_cast<const CSectorObjCont*>(pParent));
+        return true;
     }
 
-    return CObjBase::_TickableStateBase();
+    return CObjBase::_CanTick(fParentGoingToSleep);
 
 	EXC_CATCH;
 

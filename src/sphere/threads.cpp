@@ -527,9 +527,11 @@ void AbstractThread::overwriteInternalThreadName(const char* name) noexcept
 
 void AbstractThread::start()
 {
+#ifdef _DEBUG
     g_Log.Event(LOGM_DEBUG|LOGL_EVENT|LOGF_CONSOLE_ONLY,
         "THREADING: Spawning new thread '%s' (AbstractThread* = 0x% " PRIxSIZE_T ")...\n",
         getName(), reinterpret_cast<void*>(this));
+#endif
 
 #ifdef _WIN32
     m_handle = reinterpret_cast<spherethread_t>(_beginthreadex(nullptr, 0, &runner, this, 0, nullptr));
@@ -830,14 +832,18 @@ void AbstractThread::attachToCurrentThread(const char* osThreadName) noexcept
     // Refuse if another Sphere context already owns this OS thread.
     if (sg_tlsCurrentSphereThread && sg_tlsCurrentSphereThread != this)
     {
+#ifdef _DEBUG
         g_Log.Event(LOGM_DEBUG | LOGL_EVENT | LOGF_CONSOLE_ONLY,
             "THREADING: attachToCurrentThread rejected: current OS thread already bound to '%s'; wanted '%s'.\n",
             sg_tlsCurrentSphereThread->getName(), ptcThreadName);
+#endif
         return;
     }
 
+#ifdef _DEBUG
     g_Log.Event(LOGM_DEBUG | LOGL_EVENT | LOGF_CONSOLE_ONLY,
         "THREADING: Binding current context to thread '%s'...\n", ptcThreadName);
+#endif
 
     // Attempt to bind; onStart will self-guard and leave this object clean on refusal.
     onStart();
@@ -948,7 +954,7 @@ void AbstractSphereThread::printStackTrace() noexcept
     auto& stackInfo = (m_stackInfoCopy[0].functionName != nullptr) ? m_stackInfoCopy : m_stackInfo;
 
     g_Log.EventDebug("Printing STACK TRACE for debugging purposes (thread id %" PRIx64 ").\n", threadId);
-    g_Log.EventDebug(" _ thread name _ |   # | _____________ function _____________ |\n");
+    g_Log.EventDebug("_ thread name _ |   # | _____________ function _____________ |\n");
 
     for (ssize_t i = 0; i < (ssize_t)ARRAY_COUNT(m_stackInfoCopy); ++i)
     {

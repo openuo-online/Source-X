@@ -246,9 +246,10 @@ void CSector::_GoAwake()
 	for (CSObjContRec* pObjRec : m_Chars_Disconnect)
 	{
 		CChar* pChar = static_cast<CChar*>(pObjRec);
-		const bool fSleeping = pChar->IsSleeping();
+        const bool fCanTick = pChar->_CanTick(false);
 		ASSERT(pChar->IsDisconnected());
-		if (fSleeping)
+        // If disconnected, they will only "partly" go awake: they will only have char periodic ticks.
+        if (fCanTick)
 			pChar->GoAwake();
 	}
 
@@ -966,6 +967,9 @@ void CSector::OnHearItem( CChar * pChar, lpctstr pszText )
 	for (CSObjContRec* pObjRec : m_Items.GetIterationSafeContReverse())
 	{
 		CItem* pItem = static_cast<CItem*>(pObjRec);
+        if (!pItem->CanHear())
+            continue;
+
 		pItem->OnHear( pszText, pChar );
 	}
 }
@@ -973,16 +977,29 @@ void CSector::OnHearItem( CChar * pChar, lpctstr pszText )
 void CSector::MoveItemToSector( CItem * pItem )
 {
 	ADDTOCALLSTACK("CSector::MoveItemToSector");
-	// remove from previous list and put in new.
-	// May just be setting a timer. SetTimer or MoveTo()
+    // Remove from previous list and put in new.
+    // May just be setting a timer. SetTimeout or MoveTo()
 	ASSERT( pItem );
 
+    // Already here?
+    if (IsItemInSector(pItem))
+        return;
+
+    m_Items.AddItemToSector(pItem);
+
+    // TODO: might it be redundant to check every time if the sector can/should sleep or not (via CanSleep)?
     if (_IsSleeping())
     {
         if (_CanSleep(true))
         {
-            if (!pItem->TickableStateBase())
+            if (!pItem->_CanTick(true))
                 pItem->GoSleep();
+            else
+            {
+                // The item should tick even if the sector shouldn't (_CanTick true parameter).
+                if (pItem->IsSleeping())
+                    pItem->GoAwake();
+            }
         }
         else
         {
@@ -996,8 +1013,6 @@ void CSector::MoveItemToSector( CItem * pItem )
         if (pItem->IsSleeping())
             pItem->GoAwake();
     }
-
-	m_Items.AddItemToSector(pItem);
 }
 
 bool CSector::MoveCharToSector( CChar * pChar )
@@ -1036,16 +1051,26 @@ bool CSector::MoveCharToSector( CChar * pChar )
 
     if (_IsSleeping())
     {
-        CClient *pClient = pChar->GetClientActive();
-        if (pClient)    // A client just entered
+        if (pChar->GetClientActive() != nullptr)
         {
-            _GoAwake();    // Awake the sector and the chars inside (so, also pChar)
+            // A client just entered.
+
+            // Awake the sector and the chars inside (so, also pChar)
+            _GoAwake();
             ASSERT(!pChar->IsSleeping());
         }
-        else if (!pChar->IsSleeping())    // An NPC entered, but the sector is sleeping
+        else if (!pChar->_CanTick(true))
         {
-            if (!pChar->TickableStateBase())
-                pChar->GoSleep(); // then make the NPC sleep too.
+            // An NPC entered, but the sector is sleeping
+
+            // Then make the NPC sleep too.
+            pChar->GoSleep();
+        }
+        else
+        {
+            // The char should tick even if the sector shouldn't (_CanTick true parameter).
+            if (pChar->IsSleeping())
+                pChar->GoAwake();
         }
     }
     else
@@ -1127,28 +1152,21 @@ void CSector::RespawnDeadNPCs()
         return;
 
 	// Respawn dead NPCs
-	size_t sizeStart = m_Chars_Active.GetContentCount();
-	for (size_t i = 0; i < sizeStart; )
+    const auto charsActive = m_Chars_Active.GetIterationSafeCont();
+    for (CSObjContRec *pObjRec : charsActive)
 	{
-		CChar* pChar = static_cast <CChar*>(m_Chars_Active.GetContentIndex(i));
+        CChar* pChar = static_cast <CChar*>(pObjRec);
 		if (!pChar->m_pNPC || !pChar->m_ptHome.IsValidPoint() || !pChar->IsStatFlag(STATF_DEAD))
-		{
-			++i;
 			continue;
-		}
 
 		// Restock them with npc stuff.
 		pChar->NPC_LoadScript(true);
 
 		// Res them back to their "home".
-		ushort uiDist = pChar->m_pNPC->m_Home_Dist_Wander;
+        const ushort uiDist = pChar->m_pNPC->m_Home_Dist_Wander;
 		pChar->MoveNear( pChar->m_ptHome, uiDist );
 		pChar->NPC_CreateTrigger(); //Removed from NPC_LoadScript() and triggered after char placement
 		pChar->Spell_Resurrection();
-
-		size_t sizeCur = m_Chars_Active.GetContentCount();
-		ASSERT(sizeCur != sizeStart);
-		sizeStart = sizeCur;
 	}
 }
 
@@ -1159,8 +1177,9 @@ void CSector::Restock()
     // set restock time of all vendors in Sector.
     // set the respawn time of all spawns in Sector.
 
-	for (CSObjContRec* pObjRec : m_Chars_Active)
-	{
+    for (const auto charsActive = m_Chars_Active.GetIterationSafeCont();
+        CSObjContRec *pObjRec : charsActive)
+    {
 		CChar* pChar = static_cast<CChar*>(pObjRec);
         if (pChar->m_pNPC)
         {
@@ -1168,11 +1187,10 @@ void CSector::Restock()
         }
     }
 
-	size_t i = m_Items.GetContentCount();
-	while (i > 0)
-	{
-		ASSERT(i < m_Items.GetContentCount());
-		CItem* pItem = static_cast<CItem*>(m_Items.GetContentIndex(--i));
+    for (const auto items = m_Items.GetIterationSafeCont();
+        CSObjContRec *pObjRec : items)
+    {
+        CItem* pItem = static_cast<CItem*>(pObjRec);
         CCSpawn* pSpawn = pItem->GetSpawn();
         if (pSpawn)
         {
@@ -1433,9 +1451,6 @@ bool CSector::CheckItemComplexity() const noexcept
 
 bool CSector::IsItemInSector( const CItem * pItem ) const
 {
-	if ( !pItem )
-		return false;
-
 	return (pItem->GetParent() == &m_Items);
 }
 

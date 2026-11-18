@@ -834,6 +834,16 @@ public:
 		return ( (m_iConnectType == CONNECT_CRYPT) || (m_iConnectType == CONNECT_LOGIN) || (m_iConnectType == CONNECT_GAME) );
 	}
 
+    /**
+     * Checks, whether packet is pregame (connection or login part) or game (game, telnet, http, axis...).
+     *
+     * @return True if packet type is before login.
+     */
+    bool IsPreGameTypePacket() const noexcept
+	{
+	    return m_iConnectType == CONNECT_UNK || m_iConnectType == CONNECT_CRYPT || m_iConnectType == CONNECT_LOGIN;
+	}
+
 	CONNECT_TYPE GetConnectType() const noexcept
 	{
 		return m_iConnectType;
@@ -869,7 +879,7 @@ public:
 	CItemMultiCustom * m_pHouseDesign; // The building this client is designing
 
 public:
-	lpctstr GetDefStr( lpctstr ptcKey, bool fZero = false ) const
+    lpctstr GetDefStr( lpctstr ptcKey, bool fZero = false ) const
 	{
 		return m_BaseDefs.GetKeyStr( ptcKey, fZero );
 	}
@@ -879,14 +889,14 @@ public:
 		return m_BaseDefs.GetKeyNum( ptcKey );
 	}
 
-	void SetDefNum(lpctstr ptcKey, int64 iVal, bool fZero = true)
+    void SetDefNum(lpctstr ptcKey, int64 iVal, bool fZero = true, bool fWarnOverwrite = false)
 	{
-		m_BaseDefs.SetNum(ptcKey, iVal, fZero);
+        m_BaseDefs.SetNum(ptcKey, iVal, fZero, fWarnOverwrite);
 	}
 
-	void SetDefStr(lpctstr ptcKey, lpctstr pszVal, bool fQuoted = false, bool fZero = true)
+    void SetDefStr(lpctstr ptcKey, lpctstr pszVal, bool fQuoted = false, bool fZero = true, bool fWarnOverwrite = false)
 	{
-		m_BaseDefs.SetStr(ptcKey, fQuoted, pszVal, fZero);
+        m_BaseDefs.SetStr(ptcKey, fQuoted, pszVal, fZero, fWarnOverwrite);
 	}
 
 	void DeleteDef(lpctstr ptcKey)

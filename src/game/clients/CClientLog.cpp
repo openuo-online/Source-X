@@ -84,15 +84,6 @@ void CClient::SetConnectType( CONNECT_TYPE iType )
 		-- history.m_iPendingConnectionRequests;
 	}
 	m_iConnectType = iType;
-
-/*
-	m_iConnectType = iType;
-	if ( iType == CONNECT_GAME )
-	{
-		HistoryIP& history = g_NetworkManager.getIPHistoryManager().getHistoryForIP(GetPeer());
-		-- history.m_connecting;
-	}
-*/
 }
 
 //---------------------------------------------------------------------
@@ -425,23 +416,23 @@ bool CClient::OnRxConsole( const byte * pData, uint iLen )
 						m_Targ_Text.Clear();
 						return OnRxConsoleLoginComplete();
 					}
-					else if ( ! sMsg.IsEmpty())
-					{
-						SysMessage( sMsg );
-						return false;
-					}
-					m_Targ_Text.Clear();
+                    if (!sMsg.IsEmpty())
+                    {
+                        SysMessage(sMsg);
+                        return false;
+                    }
+                    m_Targ_Text.Clear();
 				}
 				return true;
 			}
-			else
-			{
-				iRet = g_Serv.OnConsoleCmd( m_Targ_Text, this );
+            const CSString sMsg = m_Targ_Text;
+            iRet = g_Serv.OnConsoleCmd(m_Targ_Text, this);
 
-				if (g_Cfg.m_fTelnetLog && GetPrivLevel() >= g_Cfg.m_iCommandLog)
-					g_Log.Event(LOGM_GM_CMDS, "%x:'%s' commands '%s'=%d\n", GetSocketID(), GetName(), static_cast<lpctstr>(m_Targ_Text), iRet);
-			}
-		}
+            if (g_Cfg.m_fTelnetLog && GetPrivLevel() >= g_Cfg.m_iCommandLog)
+            {
+                g_Log.Event(LOGM_GM_CMDS, "%x:'%s' commands '%s'=%d\n", GetSocketID(), GetName(), static_cast<lpctstr>(sMsg), iRet);
+            }
+        }
 	}
 	return true;
 }
@@ -655,9 +646,7 @@ bool CClient::OnRxPing( const byte * pData, uint iLen )
 
 			SysMessage( g_Serv.GetStatusString( 0x25 ) );
 
-			// exit 'remote admin mode'
-			SetConnectType( CONNECT_UNK );
-			return false;
+		    return false;
 		}
 
 		// UOGateway Status
@@ -684,8 +673,6 @@ bool CClient::OnRxPing( const byte * pData, uint iLen )
 
 			SysMessage( g_Serv.GetStatusString( 0x22 ) );
 
-			// exit 'remote admin mode'
-			SetConnectType( CONNECT_UNK );
 			return false;
 		}
 	}
